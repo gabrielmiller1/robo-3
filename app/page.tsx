@@ -1,39 +1,89 @@
-import Link from "next/link"
+"use client"
 
-import { siteConfig } from "@/config/site"
-import { buttonVariants } from "@/components/ui/button"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/textarea"
+import { Button } from "@/components/ui/button"
+import LogoBradesco from '../public/logo-bradesco.png'
+import Image from 'next/image'
+import { toast } from 'react-toastify';
 
-export default function IndexPage() {
+export default function Component() {
+  const [urls, setUrls] = useState("")
+  const [showForm, setShowForm] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const router = useRouter()
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowForm(true)
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsProcessing(true)
+
+    try {
+      const response = await fetch('/api/validate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ urls: urls.split(',').map(url => url.trim()) }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Erro na validação das URLs.')
+      }
+
+      const data = await response.json()
+
+      toast.success("URLs enviadas e validadas com sucesso!")
+      const timer2 = setTimeout(() => {
+        router.push('/results')
+      }, 2000)
+      return () => clearTimeout(timer2)
+    } catch (error) {
+      console.error("Erro ao validar URLs:", error)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
   return (
-    <section className="container grid items-center gap-6 pb-8 pt-6 md:py-10">
-      <div className="flex max-w-[980px] flex-col items-start gap-2">
-        <h1 className="text-3xl font-extrabold leading-tight tracking-tighter md:text-4xl">
-          Beautifully designed components <br className="hidden sm:inline" />
-          built with Radix UI and Tailwind CSS.
-        </h1>
-        <p className="max-w-[700px] text-lg text-muted-foreground">
-          Accessible and customizable components that you can copy and paste
-          into your apps. Free. Open Source. And Next.js 13 Ready.
-        </p>
-      </div>
-      <div className="flex gap-4">
-        <Link
-          href={siteConfig.links.docs}
-          target="_blank"
-          rel="noreferrer"
-          className={buttonVariants()}
-        >
-          Documentation
-        </Link>
-        <Link
-          target="_blank"
-          rel="noreferrer"
-          href={siteConfig.links.github}
-          className={buttonVariants({ variant: "outline" })}
-        >
-          GitHub
-        </Link>
-      </div>
-    </section>
+    <div className="h-screen-minus-4rem flex flex-col items-center justify-center bg-primary py-4">
+      {!showForm && (
+        <div className="animate-bounce">
+          {/* <Image src={LogoBradesco} alt="Logo Bradesco" width={500} height={500} className="size-25 text-primary-foreground" /> */}
+          <p className="text-xl text-primary-foreground">Carregando...</p>
+        </div>
+      )}
+      {showForm && (
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Envie suas URLs</CardTitle>
+            <CardDescription>Insira múltiplas URLs separadas por vírgula.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit}>
+              <Textarea
+                value={urls}
+                onChange={(e) => setUrls(e.target.value)}
+                placeholder="https://example.com, https://example.org, https://example.net"
+                className="min-h-[100px]"
+              />
+              <div className="mt-4 flex justify-end">
+                <Button type="submit" disabled={isProcessing}>
+                  {isProcessing ? 'Processando...' : 'Enviar'}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   )
 }

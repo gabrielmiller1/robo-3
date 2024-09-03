@@ -79,3 +79,7 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+.h-screen-minus-4rem {
+  height: calc(100vh - 4.05rem);
+}

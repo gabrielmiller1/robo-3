@@ -101,7 +101,11 @@ export async function POST(request: Request) {
           try {
             await page.goto(url, { timeout: 60000 }); // Ajusta o timeout para 60 segundos
           } catch (error) {
-            console.error(`Erro de navegação para ${url}: ${error.message}`);
+            if (error instanceof Error) {
+              console.error(`Erro de navegação para ${url}: ${error.message}`);
+            } else {
+              console.error(`Erro de navegação para ${url}: ${error}`);
+            }
             validationReport.passedInternalization = false;
           }
 

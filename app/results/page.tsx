@@ -5,7 +5,26 @@ import { toast } from 'react-toastify';
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 
-function FileWarningIcon(props) {
+interface ValidationReport {
+  url: string;
+  images: { extensaoImagemTest?: TestStatus; pesoImagemTest?: TestStatus }[];
+  html: { extensaoHtmlTest?: TestStatus }[];
+  fonts: { fontsTest?: TestStatus }[];
+  externalFiles: { arquivosComChamadasExternasTest?: TestStatus }[];
+}
+
+interface TestStatus {
+  testPassed: boolean;
+  notPassedUrls?: string[];
+}
+
+interface ModalData {
+  url: string;
+  column: string;
+  notPassedUrls?: string[];
+}
+
+function FileWarningIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       {...props}
@@ -27,9 +46,9 @@ function FileWarningIcon(props) {
 }
 
 export default function Component() {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalData, setModalData] = useState(null);
-  const [validationReports, setValidationReports] = useState([]);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [modalData, setModalData] = useState<ModalData | null>(null);
+  const [validationReports, setValidationReports] = useState<ValidationReport[]>([]);
 
   useEffect(() => {
     const fetchResults = async () => {
@@ -38,7 +57,7 @@ export default function Component() {
         if (!response.ok) {
           throw new Error("Erro ao carregar resultados");
         }
-        const data = await response.json();
+        const data: ValidationReport[] = await response.json();
         setValidationReports(data);
       } catch (error) {
         console.error("Erro ao carregar resultados:", error);
@@ -48,7 +67,7 @@ export default function Component() {
     fetchResults();
   }, []);
 
-  const getTestStatus = (test, url, column) => {
+  const getTestStatus = (test: TestStatus, url: string, column: string) => {
     return test.testPassed ? (
       <div className="mx-auto flex max-w-24 items-center justify-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-600">
         OK
@@ -71,28 +90,25 @@ export default function Component() {
     );
   };
 
-   // Função para zerar os resultados
-   const clearResults = async () => {
-     try {
-       const response = await fetch('/api/clear-results', { method: 'DELETE' });
-       if (!response.ok) {
-         throw new Error('Erro ao apagar resultados');
-       }
-       // Atualize o estado após a exclusão bem-sucedida
-       setValidationReports([]);
-       toast.success('Resultados apagados com sucesso'); // Exibe o toast de sucesso
-     } catch (error) {
-       console.error('Erro ao apagar resultados:', error);
-       toast.error('Falha ao apagar resultados'); // Exibe o toast de erro
-     }
-   };
+  const clearResults = async () => {
+    try {
+      const response = await fetch('/api/clear-results', { method: 'DELETE' });
+      if (!response.ok) {
+        throw new Error('Erro ao apagar resultados');
+      }
+      setValidationReports([]);
+      toast.success('Resultados apagados com sucesso');
+    } catch (error) {
+      console.error('Erro ao apagar resultados:', error);
+      toast.error('Falha ao apagar resultados');
+    }
+  };
 
   return (
     <div className="bg-background text-foreground">
       <div className="container mx-auto px-4 py-12 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Pacotes BE (Front)</h1>
-          <p className="text-muted-foreground"></p>
         </div>
         <div className="mb-4">
           <Button onClick={clearResults} className="bg-yellow-200 text-yellow-600 hover:bg-yellow-300">
@@ -122,23 +138,23 @@ export default function Component() {
                     <div className="text-center">{report.url.includes("mobile") ? "Mobile" : "Desktop"}</div>
                   </td>
                   <td className="p-4">
-                    {report.images[0] &&
+                    {report.images[0]?.extensaoImagemTest &&
                       getTestStatus(report.images[0].extensaoImagemTest, report.url, "Imagem (Extensão, imagens devem ser carregadas como webp)")}
                   </td>
                   <td className="p-4">
-                    {report.images[1] &&
-                      getTestStatus(report.images[1].pesoImagemTest, report.url, "Imagem (Peso > 500Kb)")}
+                    {report.images[0]?.pesoImagemTest &&
+                      getTestStatus(report.images[0].pesoImagemTest, report.url, "Imagem (Peso > 500Kb)")}
                   </td>
                   <td className="p-4">
-                    {report.html[0] &&
+                    {report.html[0]?.extensaoHtmlTest &&
                       getTestStatus(report.html[0].extensaoHtmlTest, report.url, "HTML (Extensão deve ser .shtm)")}
                   </td>
                   <td className="p-4 text-center">
-                    {report.fonts[0] &&
+                    {report.fonts[0]?.fontsTest &&
                       getTestStatus(report.fonts[0].fontsTest, report.url, "Fonts (Fonts Internas, apenas fonts internas Bradesco)")}
                   </td>
                   <td className="p-4">
-                    {report.externalFiles[0] &&
+                    {report.externalFiles[0]?.arquivosComChamadasExternasTest &&
                       getTestStatus(report.externalFiles[0].arquivosComChamadasExternasTest, report.url, "Arquivos Externos, não permitido chamada de arquivos externos")}
                   </td>
                 </tr>

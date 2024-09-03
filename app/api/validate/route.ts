@@ -1,13 +1,13 @@
 // app/api/validate/route.ts
 
 import { NextResponse } from 'next/server';
-import puppeteer from 'puppeteer';
+import puppeteer, { Page, Browser } from 'puppeteer';
 import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 
 const MAX_IMAGE_SIZE_KB = 500;
 
-async function ensureResultsDirExists() {
+async function ensureResultsDirExists(): Promise<void> {
   const resultsDir = join(process.cwd(), 'public', 'results');
   try {
     await mkdir(resultsDir, { recursive: true });
@@ -17,17 +17,205 @@ async function ensureResultsDirExists() {
   }
 }
 
-export async function POST(request: Request) {
+interface ValidationReport {
+  url: string;
+  images: Array<{
+    extensaoImagemTest: {
+      testPassed: boolean;
+      notPassedUrls: string[];
+    };
+    pesoImagemTest?: {
+      testPassed: boolean;
+      notPassedUrls: string[];
+    };
+  }>;
+  html: Array<{
+    extensaoHtmlTest: {
+      testPassed: boolean;
+      notPassedUrls: string[];
+    };
+  }>;
+  fonts: Array<{
+    fontsTest: {
+      testPassed: boolean;
+      notPassedUrls: string[];
+    };
+  }>;
+  externalFiles: Array<{
+    arquivosComChamadasExternasTest: {
+      testPassed: boolean;
+      notPassedUrls: string[];
+    };
+  }>;
+  passedInternalization: boolean;
+}
+
+async function validateImages(page: Page, baseDomain: string): Promise<ValidationReport['images']> {
+  const imageRequests = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll('img')).map((img: HTMLImageElement) => img.src);
+  });
+
+  // Inicialize results com tipos explícitos e assegure que o array não esteja vazio
+  const results: {
+    extensaoImagemTest: {
+      testPassed: boolean;
+      notPassedUrls: string[];
+    };
+    pesoImagemTest: {
+      testPassed: boolean;
+      notPassedUrls: string[];
+    };
+  }[] = [
+    {
+      extensaoImagemTest: {
+        testPassed: true,
+        notPassedUrls: [],
+      },
+      pesoImagemTest: {
+        testPassed: true,
+        notPassedUrls: [],
+      },
+    },
+  ];
+
+  const imageTestResults = results[0];
+
+  for (const imageUrl of imageRequests) {
+    if (imageUrl.startsWith(baseDomain)) {
+      try {
+        const response = await page.goto(imageUrl, { timeout: 60000 });
+        if (response) {
+          const buffer = await response.buffer();
+          const sizeKB = buffer.length / 1024;
+          const format = imageUrl.split('.').pop();
+
+          if (format !== 'webp' && format !== 'svg') {
+            imageTestResults.extensaoImagemTest.testPassed = false;
+            imageTestResults.extensaoImagemTest.notPassedUrls.push(imageUrl);
+          }
+          if (sizeKB > MAX_IMAGE_SIZE_KB) {
+            imageTestResults.pesoImagemTest.testPassed = false;
+            imageTestResults.pesoImagemTest.notPassedUrls.push(imageUrl);
+          }
+        }
+      } catch (error) {
+        console.error(`Erro ao acessar a imagem ${imageUrl}: ${(error as Error).message}`);
+      }
+    }
+  }
+
+  return results; // Retorna o resultado corretamente
+}
+
+async function validateHtml(url: string): Promise<ValidationReport['html']> {
+  const htmlExtensionValid = url.endsWith('.shtm');
+  return [{
+    extensaoHtmlTest: {
+      testPassed: htmlExtensionValid,
+      notPassedUrls: htmlExtensionValid ? [] : [url],
+    },
+  }];
+}
+
+async function validateExternalFiles(networkRequests: Array<{ url: string, initiator: any }>, baseDomain: string): Promise<ValidationReport['externalFiles']> {
+  const allowedDomains = [
+    'https://www.google.com',
+    'https://www.google.com.br',
+    'https://googleads.g.doubleclick.net',
+    'https://www.googletagmanager.com',
+    'https://www.google-analytics.com',
+    'https://connect.facebook.net',
+    'https://t.co',
+    'https://analytics.twitter.com',
+    'https://td.doubleclick.net',
+    'http://static.ads-twitter.com',
+    'https://static.ads-twitter.com/uwt.js',
+    'https://analytics.google.com',
+    'https://stats.g.doubleclick.net'
+  ];
+
+  const allowedInitiators = [
+    'http://static.ads-twitter.com/uwt.js'
+  ];
+
+  const isAllowedUrl = (url: string): boolean => {
+    if (url.startsWith('data:')) {
+      return true;
+    }
+
+    const parsedUrl = new URL(url);
+    return allowedDomains.some(domain => parsedUrl.origin === domain);
+  };
+
+  const isAllowedInitiator = (initiator: any): boolean => {
+    return initiator && initiator.url && allowedInitiators.includes(initiator.url);
+  };
+
+  const externalRequests = networkRequests.filter(req => {
+    const url = new URL(req.url);
+    return !req.url.startsWith(baseDomain) && !isAllowedUrl(req.url) && !isAllowedInitiator(req.initiator);
+  });
+
+  return [{
+    arquivosComChamadasExternasTest: {
+      testPassed: externalRequests.length === 0,
+      notPassedUrls: externalRequests.map(req => req.url),
+    },
+  }];
+}
+
+interface NetworkRequest {
+  url: string;
+  type: string; // Inclui a propriedade type
+}
+
+async function validateFonts(networkRequests: NetworkRequest[]): Promise<ValidationReport['fonts']> {
+  // Filtra as requisições de fonte
+  const fontRequests = networkRequests.filter(req => req.type === 'font');
+
+  // Inicializa resultados com tipos explícitos
+  const results: {
+    fontsTest: {
+      testPassed: boolean;
+      notPassedUrls: string[];
+    };
+  } = {
+    fontsTest: {
+      testPassed: true,
+      notPassedUrls: [], // Define explicitamente como string[]
+    },
+  };
+
+  for (const fontRequest of fontRequests) {
+    // Trata caso onde split pode retornar undefined
+    const fontParts = fontRequest.url.split('/');
+    const fontName = fontParts.pop()?.split('.')[0] ?? '';
+
+    const isFontValid = (font: string): boolean => {
+      const fontLower = font.toLowerCase();
+      return fontLower.includes('bradesco') || fontLower.includes('sans-serif');
+    };
+
+    if (!isFontValid(fontName)) {
+      results.fontsTest.testPassed = false;
+      results.fontsTest.notPassedUrls.push(fontRequest.url);
+    }
+  }
+
+  return [results]; // Retorna o resultado corretamente
+}
+
+export async function POST(request: Request): Promise<NextResponse> {
   try {
-    const { urls } = await request.json();
+    const { urls }: { urls?: string[] } = await request.json();
 
     if (!urls || !Array.isArray(urls)) {
       return NextResponse.json({ error: 'URLs inválidas' }, { status: 400 });
     }
 
-    const allReports: any[] = [];
-    const browser = await puppeteer.launch({
-      headless: false,
+    const allReports: ValidationReport[] = [];
+    const browser: Browser = await puppeteer.launch({
+      headless: true,
       defaultViewport: null,
     });
 
@@ -39,54 +227,11 @@ export async function POST(request: Request) {
         ];
 
         for (const viewport of viewports) {
-          const page = await browser.newPage();
+          const page: Page = await browser.newPage();
           await page.setViewport(viewport);
 
-          let validationReport = {
-            url: `${url} - ${viewport.name}`,
-            images: [
-              {
-                extensaoImagemTest: {
-                  testPassed: true,
-                  notPassedUrls: [],
-                },
-              },
-              {
-                pesoImagemTest: {
-                  testPassed: true,
-                  notPassedUrls: [],
-                },
-              },
-            ],
-            html: [
-              {
-                extensaoHtmlTest: {
-                  testPassed: true,
-                  notPassedUrls: [],
-                },
-              },
-            ],
-            fonts: [
-              {
-                fontsTest: {
-                  testPassed: true,
-                  notPassedUrls: [],
-                },
-              },
-            ],
-            externalFiles: [
-              {
-                arquivosComChamadasExternasTest: {
-                  testPassed: true,
-                  notPassedUrls: [],
-                },
-              },
-            ],
-            passedInternalization: true,
-          };
-
           const baseDomain = new URL(url).origin;
-          const networkRequests: any[] = [];
+          const networkRequests: Array<{ url: string; type: string; initiator: any }> = [];
 
           await page.setRequestInterception(true);
           page.on('request', (request) => {
@@ -99,136 +244,54 @@ export async function POST(request: Request) {
           });
 
           try {
-            await page.goto(url, { timeout: 60000 }); // Ajusta o timeout para 60 segundos
+            await page.goto(url, { timeout: 60000 });
           } catch (error) {
-            if (error instanceof Error) {
-              console.error(`Erro de navegação para ${url}: ${error.message}`);
-            } else {
-              console.error(`Erro de navegação para ${url}: ${error}`);
-            }
-            validationReport.passedInternalization = false;
+            console.error(`Erro de navegação para ${url}: ${(error as Error).message}`);
           }
 
           // Validação de Imagens
-          const imageResults = networkRequests.filter(req => req.type === 'image');
+          const images = await validateImages(page, baseDomain);
 
-          for (const imageRequest of imageResults) {
-            const imageUrl = imageRequest.url;
-            if (imageUrl.startsWith(baseDomain)) {
-              try {
-                const response = await page.goto(imageUrl, { timeout: 60000 });
-                if (response) {
-                  const buffer = await response.buffer();
-                  const sizeKB = buffer.length / 1024; // Tamanho em KB
-                  const format = imageUrl.split('.').pop();
-
-                  if (format !== 'webp' && format !== 'svg') {
-                    validationReport.images[0].extensaoImagemTest.testPassed = false;
-                    validationReport.images[0].extensaoImagemTest.notPassedUrls.push(imageUrl);
-                  }
-                  if (sizeKB > MAX_IMAGE_SIZE_KB) {
-                    validationReport.images[1].pesoImagemTest.testPassed = false;
-                    validationReport.images[1].pesoImagemTest.notPassedUrls.push(imageUrl);
-                  }
-                }
-              } catch (error) {
-                console.error(`Erro ao acessar a imagem ${imageUrl}: ${error.message}`);
-              }
-            }
-          }
-
-          // Validação da Extensão do HTML
-          const htmlExtensionValid = url.endsWith('.shtm');
-          validationReport.html[0].extensaoHtmlTest.testPassed = htmlExtensionValid;
-          if (!htmlExtensionValid) {
-            validationReport.html[0].extensaoHtmlTest.notPassedUrls.push(url);
-          }
-
-          // Validação de Arquivos Externos
-          const allowedDomains = [
-            'https://www.google.com',
-            'https://www.google.com.br',
-            'https://googleads.g.doubleclick.net',
-            'https://www.googletagmanager.com',
-            'https://www.google-analytics.com',
-            'https://connect.facebook.net',
-            'https://t.co',
-            'https://analytics.twitter.com',
-            'https://td.doubleclick.net',
-            'http://static.ads-twitter.com',
-            'https://static.ads-twitter.com/uwt.js',
-            'https://analytics.google.com',
-            'https://stats.g.doubleclick.net',
-            'https://analytics.google.com',
-            'https://static.ads-twitter.com'
-          ];
-
-          const allowedInitiators = [
-            'http://static.ads-twitter.com/uwt.js'
-          ];
-
-          const isAllowedUrl = (url: string) => {
-            if (url.startsWith('data:')) {
-              return true; // Permite data URLs
-            }
-
-            const parsedUrl = new URL(url);
-            return allowedDomains.some(domain => parsedUrl.origin === domain);
-          };
-
-          const isAllowedInitiator = (initiator: any) => {
-            return initiator && initiator.url && allowedInitiators.includes(initiator.url);
-          };
-
-          const externalRequests = networkRequests.filter(req => {
-            const url = new URL(req.url);
-            return !req.url.startsWith(baseDomain) && !isAllowedUrl(req.url) && !isAllowedInitiator(req.initiator);
-          });
-
-          if (externalRequests.length > 0) {
-            validationReport.externalFiles[0].arquivosComChamadasExternasTest.testPassed = false;
-            validationReport.externalFiles[0].arquivosComChamadasExternasTest.notPassedUrls.push(...externalRequests.map(req => req.url));
-          }
+          // Validação de HTML
+          const html = await validateHtml(url);
 
           // Validação de Fontes
-          const fontRequests = networkRequests.filter(req => req.type === 'font');
+          const fonts = await validateFonts(networkRequests);
 
-          for (const fontRequest of fontRequests) {
-            const fontName = fontRequest.url.split('/').pop().split('.')[0];
+          // Validação de Arquivos Externos
+          const externalFiles = await validateExternalFiles(networkRequests, baseDomain);
 
-            const isFontValid = (font: string) => {
-              const fontLower = font.toLowerCase();
-              return fontLower.includes('bradesco') || fontLower.includes('sans-serif');
-            };
+          // Acesso Seguro aos Resultados
+          const validationReport: ValidationReport = {
+            url: `${url} - ${viewport.name}`,
+            images: images.length > 0 ? images : [{ extensaoImagemTest: { testPassed: true, notPassedUrls: [] }, pesoImagemTest: { testPassed: true, notPassedUrls: [] } }],
+            html: html.length > 0 ? html : [{ extensaoHtmlTest: { testPassed: true, notPassedUrls: [] } }],
+            fonts: fonts.length > 0 ? fonts : [{ fontsTest: { testPassed: true, notPassedUrls: [] } }],
+            externalFiles: externalFiles.length > 0 ? externalFiles : [{ arquivosComChamadasExternasTest: { testPassed: true, notPassedUrls: [] } }],
+            passedInternalization: true,
+          };
 
-            if (!isFontValid(fontName)) {
-              validationReport.fonts[0].fontsTest.testPassed = false;
-              validationReport.fonts[0].fontsTest.notPassedUrls.push(fontRequest.url);
-            }
-          }
+          // Acesso Seguro aos Resultados com Verificação de Undefined
+          const imageResult = validationReport.images[0];
+          const htmlResult = validationReport.html[0];
+          const fontResult = validationReport.fonts[0];
+          const externalFileResult = validationReport.externalFiles[0];
 
-          validationReport.passedInternalization = validationReport.images[0].extensaoImagemTest.testPassed &&
-            validationReport.images[1].pesoImagemTest.testPassed &&
-            validationReport.html[0].extensaoHtmlTest.testPassed &&
-            validationReport.fonts[0].fontsTest.testPassed &&
-            validationReport.externalFiles[0].arquivosComChamadasExternasTest.testPassed;
+          validationReport.passedInternalization =
+            (imageResult?.extensaoImagemTest.testPassed ?? true) &&
+            (imageResult?.pesoImagemTest?.testPassed ?? true) &&
+            (htmlResult?.extensaoHtmlTest.testPassed ?? true) &&
+            (fontResult?.fontsTest.testPassed ?? true) &&
+            (externalFileResult?.arquivosComChamadasExternasTest.testPassed ?? true);
 
           allReports.push(validationReport);
-
-          await page.close(); // Garante que a aba é fechada
+          await page.close();
         }
       }
 
-      // Garante que a pasta de resultados existe
       await ensureResultsDirExists();
-
-      // Define o caminho para salvar o arquivo JSON
       const filePath = join(process.cwd(), 'public', 'results', `results.json`);
-
-      // Salva os resultados no arquivo JSON
       await writeFile(filePath, JSON.stringify(allReports, null, 2), 'utf-8');
-
-      // Retorna o caminho do arquivo JSON para o cliente
       return NextResponse.json({ filePath });
 
     } catch (error) {

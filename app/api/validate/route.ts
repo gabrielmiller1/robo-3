@@ -215,6 +215,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const allReports: ValidationReport[] = [];
     const browser: Browser = await puppeteer.launch({
+      args: ['--no-sandbox'],
       headless: true,
       defaultViewport: null,
     });

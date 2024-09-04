@@ -253,19 +253,13 @@ export async function POST(request: Request): Promise<NextResponse> {
             console.error(`Erro de navegação para ${url}: ${(error as Error).message}`);
           }
 
-          // Validação de Imagens
+          // Validação
           const images = await validateImages(page, baseDomain);
-
-          // Validação de HTML
           const html = await validateHtml(url);
-
-          // Validação de Fontes
           const fonts = await validateFonts(networkRequests);
-
-          // Validação de Arquivos Externos
           const externalFiles = await validateExternalFiles(networkRequests, baseDomain);
 
-          // Acesso Seguro aos Resultados
+          // Criar Relatório
           const validationReport: ValidationReport = {
             url: `${url} - ${viewport.name}`,
             images: images.length > 0 ? images : [{ extensaoImagemTest: { testPassed: true, notPassedUrls: [] }, pesoImagemTest: { testPassed: true, notPassedUrls: [] } }],
@@ -275,29 +269,13 @@ export async function POST(request: Request): Promise<NextResponse> {
             passedInternalization: true,
           };
 
-          // Acesso Seguro aos Resultados com Verificação de Undefined
-          const imageResult = validationReport.images[0];
-          const htmlResult = validationReport.html[0];
-          const fontResult = validationReport.fonts[0];
-          const externalFileResult = validationReport.externalFiles[0];
-
-          validationReport.passedInternalization =
-            (imageResult?.extensaoImagemTest.testPassed ?? true) &&
-            (imageResult?.pesoImagemTest?.testPassed ?? true) &&
-            (htmlResult?.extensaoHtmlTest.testPassed ?? true) &&
-            (fontResult?.fontsTest.testPassed ?? true) &&
-            (externalFileResult?.arquivosComChamadasExternasTest.testPassed ?? true);
-
           allReports.push(validationReport);
           await page.close();
         }
       }
 
-      await ensureResultsDirExists();
-      const filePath = join(process.cwd(), 'public', 'data', `results.json`);
-      await writeFile(filePath, JSON.stringify(allReports, null, 2), 'utf-8');
-      console.log(filePath);
-      return NextResponse.json({ filePath });
+      // Retornar os dados como resposta JSON
+      return NextResponse.json({ reports: allReports });
 
     } catch (error) {
       console.error('Erro ao processar as validações:', error);

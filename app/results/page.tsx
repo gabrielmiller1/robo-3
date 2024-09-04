@@ -51,16 +51,25 @@ export default function Component() {
   const [validationReports, setValidationReports] = useState<ValidationReport[]>([]);
 
   useEffect(() => {
-    const fetchResults = async () => {
+    const fetchResults = () => {
       try {
-        const response = await fetch("/data/results.json");
-        if (!response.ok) {
-          throw new Error("Erro ao carregar resultados");
+        const data = localStorage.getItem('validationReports');
+        if (data) {
+          const parsedData = JSON.parse(data);
+          const reports = parsedData.reports;
+
+          if (Array.isArray(reports)) {
+            setValidationReports(reports);
+          } else {
+            throw new Error('Os dados recuperados não são um array de objetos ValidationReport.');
+          }
+        } else {
+          // TODO - Implementar erro
+          // throw new Error('Nenhum resultado encontrado');
         }
-        const data: ValidationReport[] = await response.json();
-        setValidationReports(data);
       } catch (error) {
         console.error("Erro ao carregar resultados:", error);
+        setValidationReports([]);
       }
     };
 
@@ -92,11 +101,13 @@ export default function Component() {
 
   const clearResults = async () => {
     try {
-      const response = await fetch('/api/clear-results', { method: 'DELETE' });
-      if (!response.ok) {
-        throw new Error('Erro ao apagar resultados');
-      }
+      // TODO - Será o endpoint para limpar os resultados.
+      // const response = await fetch('/api/clear-results', { method: 'DELETE' });
+      // if (!response.ok) {
+      //   throw new Error('Erro ao apagar resultados');
+      // }
       setValidationReports([]);
+      localStorage.removeItem('validationReports'); // Limpar o localStorage
       toast.success('Resultados apagados com sucesso');
     } catch (error) {
       console.error('Erro ao apagar resultados:', error);
@@ -112,7 +123,7 @@ export default function Component() {
         </div>
         <div className="mb-4">
           <Button onClick={clearResults} className="bg-yellow-200 text-yellow-600 hover:bg-yellow-300">
-            Zerar Resultados
+            Limpar Resultados
           </Button>
         </div>
         <div className="overflow-x-auto">
@@ -129,36 +140,43 @@ export default function Component() {
               </tr>
             </thead>
             <tbody>
-              {validationReports.map((report, index) => (
-                <tr key={index} className="border border-muted">
-                  <td className="p-4">
-                    <div className="font-medium">{report.url.split(" - ")[0]}</div>
-                  </td>
-                  <td className="p-4">
-                    <div className="text-center">{report.url.includes("mobile") ? "Mobile" : "Desktop"}</div>
-                  </td>
-                  <td className="p-4">
-                    {report.images[0]?.extensaoImagemTest &&
-                      getTestStatus(report.images[0].extensaoImagemTest, report.url, "Imagem (Extensão, imagens devem ser carregadas como webp)")}
-                  </td>
-                  <td className="p-4">
-                    {report.images[0]?.pesoImagemTest &&
-                      getTestStatus(report.images[0].pesoImagemTest, report.url, "Imagem (Peso > 500Kb)")}
-                  </td>
-                  <td className="p-4">
-                    {report.html[0]?.extensaoHtmlTest &&
-                      getTestStatus(report.html[0].extensaoHtmlTest, report.url, "HTML (Extensão deve ser .shtm)")}
-                  </td>
-                  <td className="p-4 text-center">
-                    {report.fonts[0]?.fontsTest &&
-                      getTestStatus(report.fonts[0].fontsTest, report.url, "Fonts (Fonts Internas, apenas fonts internas Bradesco)")}
-                  </td>
-                  <td className="p-4">
-                    {report.externalFiles[0]?.arquivosComChamadasExternasTest &&
-                      getTestStatus(report.externalFiles[0].arquivosComChamadasExternasTest, report.url, "Arquivos Externos, não permitido chamada de arquivos externos")}
-                  </td>
+
+              {Array.isArray(validationReports) && validationReports.length > 0 ? (
+                validationReports.map((report, index) => (
+                  <tr key={index} className="border border-muted">
+                    <td className="p-4">
+                      <div className="font-medium">{report.url.split(" - ")[0]}</div>
+                    </td>
+                    <td className="p-4">
+                      <div className="text-center">{report.url.includes("mobile") ? "Mobile" : "Desktop"}</div>
+                    </td>
+                    <td className="p-4">
+                      {report.images[0]?.extensaoImagemTest &&
+                        getTestStatus(report.images[0].extensaoImagemTest, report.url, "Imagem (Extensão, imagens devem ser carregadas como webp)")}
+                    </td>
+                    <td className="p-4">
+                      {report.images[0]?.pesoImagemTest &&
+                        getTestStatus(report.images[0].pesoImagemTest, report.url, "Imagem (Peso > 500Kb)")}
+                    </td>
+                    <td className="p-4">
+                      {report.html[0]?.extensaoHtmlTest &&
+                        getTestStatus(report.html[0].extensaoHtmlTest, report.url, "HTML (Extensão deve ser .shtm)")}
+                    </td>
+                    <td className="p-4 text-center">
+                      {report.fonts[0]?.fontsTest &&
+                        getTestStatus(report.fonts[0].fontsTest, report.url, "Fonts (Fonts Internas, apenas fonts internas Bradesco)")}
+                    </td>
+                    <td className="p-4">
+                      {report.externalFiles[0]?.arquivosComChamadasExternasTest &&
+                        getTestStatus(report.externalFiles[0].arquivosComChamadasExternasTest, report.url, "Arquivos Externos, não permitido chamada de arquivos externos")}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={7} className="p-4 text-center">Nenhum resultado encontrado</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

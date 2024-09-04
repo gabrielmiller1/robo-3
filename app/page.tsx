@@ -23,8 +23,8 @@ export default function Component() {
   }, [])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setIsProcessing(true)
+    e.preventDefault();
+    setIsProcessing(true);
 
     try {
       const response = await fetch('/api/validate', {
@@ -33,25 +33,30 @@ export default function Component() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ urls: urls.split(',').map(url => url.trim()) }),
-      })
+      });
 
       if (!response.ok) {
-        throw new Error('Erro na validação das URLs.')
+        throw new Error('Erro na validação das URLs.');
       }
 
-      const data = await response.json()
+      const data = await response.json();
 
-      toast.success("URLs enviadas e validadas com sucesso!")
+      // Armazene os resultados no localStorage
+      localStorage.setItem('validationReports', JSON.stringify(data));
+
+      toast.success("URLs enviadas e validadas com sucesso!");
+
       const timer2 = setTimeout(() => {
-        router.push('/results')
-      }, 2000)
-      return () => clearTimeout(timer2)
+        router.push('/results');
+      }, 2000);
+      return () => clearTimeout(timer2);
     } catch (error) {
-      console.error("Erro ao validar URLs:", error)
+      console.error("Erro ao validar URLs:", error);
+      toast.error("Erro ao validar URLs. Por favor, tente novamente.");
     } finally {
-      setIsProcessing(false)
+      setIsProcessing(false);
     }
-  }
+  };
 
   return (
     <div className="h-screen-minus-4rem flex flex-col items-center justify-center bg-primary py-4">

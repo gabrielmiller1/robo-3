@@ -8,7 +8,7 @@ import { join } from 'path';
 const MAX_IMAGE_SIZE_KB = 500;
 
 async function ensureResultsDirExists(): Promise<void> {
-  const resultsDir = join(process.cwd(), 'public', 'results');
+  const resultsDir = join(process.cwd(), 'public', 'data');
   try {
     await mkdir(resultsDir, { recursive: true });
   } catch (error) {
@@ -294,8 +294,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       }
 
       await ensureResultsDirExists();
-      const filePath = join(process.cwd(), 'public', 'results', `results.json`);
+      const filePath = join(process.cwd(), 'public', 'data', `results.json`);
       await writeFile(filePath, JSON.stringify(allReports, null, 2), 'utf-8');
+      console.log(filePath);
       return NextResponse.json({ filePath });
 
     } catch (error) {

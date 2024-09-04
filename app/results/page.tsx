@@ -53,7 +53,7 @@ export default function Component() {
   useEffect(() => {
     const fetchResults = async () => {
       try {
-        const response = await fetch("/results/results.json");
+        const response = await fetch("/data/results.json");
         if (!response.ok) {
           throw new Error("Erro ao carregar resultados");
         }

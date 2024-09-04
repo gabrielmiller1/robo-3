@@ -6,7 +6,7 @@ import { join } from 'path';
 
 export async function DELETE() {
   try {
-    const filePath = join(process.cwd(), 'public', 'results', 'results.json');
+    const filePath = join(process.cwd(), 'public', 'data', 'results.json');
     await unlink(filePath);
     return NextResponse.json({ message: 'Resultados apagados com sucesso' });
   } catch (error) {

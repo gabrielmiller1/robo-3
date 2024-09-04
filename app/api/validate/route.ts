@@ -215,9 +215,10 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const allReports: ValidationReport[] = [];
     const browser: Browser = await puppeteer.launch({
-      args: ['--no-sandbox'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
       headless: true,
       defaultViewport: null,
+      timeout: 120000, // 2 minutos
     });
 
     try {
@@ -244,8 +245,10 @@ export async function POST(request: Request): Promise<NextResponse> {
             request.continue();
           });
 
+          console.log('Iniciando a navegação para:', url);
           try {
-            await page.goto(url, { timeout: 60000 });
+            await page.goto(url, { timeout: 120000 });
+            console.log('Navegação concluída para:', url);
           } catch (error) {
             console.error(`Erro de navegação para ${url}: ${(error as Error).message}`);
           }

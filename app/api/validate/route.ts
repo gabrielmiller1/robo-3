@@ -17,7 +17,7 @@ async function ensureResultsDirExists(): Promise<void> {
   }
 }
 
-interface ValidationReport {
+export interface ValidationReport {
   url: string;
   images: Array<{
     extensaoImagemTest: {

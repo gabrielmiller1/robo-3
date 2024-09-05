@@ -5,15 +5,14 @@ import { useRouter } from "next/navigation"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-import LogoBradesco from '../public/logo-bradesco.png'
-import Image from 'next/image'
 import { toast } from 'react-toastify';
+import { ValidationReport } from "./api/validate/route"
 
 export default function Component() {
-  const [urls, setUrls] = useState("")
-  const [showForm, setShowForm] = useState(false)
-  const [isProcessing, setIsProcessing] = useState(false)
-  const router = useRouter()
+  const [urls, setUrls] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -41,8 +40,25 @@ export default function Component() {
 
       const data = await response.json();
 
-      // Armazene os resultados no localStorage
-      localStorage.setItem('validationReports', JSON.stringify(data));
+      const existingReports = localStorage.getItem('validationReports');
+      let existingReportsData: { reports: ValidationReport[] } = { reports: [] };
+
+      if (existingReports) {
+        try {
+          const parsedData = JSON.parse(existingReports);
+          if (parsedData && Array.isArray(parsedData.reports)) {
+            existingReportsData = parsedData;
+          } else {
+            console.warn('Dados existentes no localStorage estão em um formato inesperado.');
+          }
+        } catch (error) {
+          console.error("Erro ao parsear os dados existentes do localStorage:", error);
+        }
+      }
+
+      const updatedReports = [...existingReportsData.reports, ...data.reports];
+
+      localStorage.setItem('validationReports', JSON.stringify({ reports: updatedReports }));
 
       toast.success("URLs enviadas e validadas com sucesso!");
 
@@ -62,7 +78,6 @@ export default function Component() {
     <div className="h-screen-minus-4rem flex flex-col items-center justify-center bg-primary py-4">
       {!showForm && (
         <div className="animate-bounce">
-          {/* <Image src={LogoBradesco} alt="Logo Bradesco" width={500} height={500} className="size-25 text-primary-foreground" /> */}
           <p className="text-xl text-primary-foreground">Carregando...</p>
         </div>
       )}
@@ -90,5 +105,5 @@ export default function Component() {
         </Card>
       )}
     </div>
-  )
+  );
 }

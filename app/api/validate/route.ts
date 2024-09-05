@@ -214,6 +214,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     const allReports: ValidationReport[] = [];
+
+    console.log('Iniciando o Puppeteer...');
     const browser: Browser = await puppeteer.launch({
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
       headless: true,
@@ -221,8 +223,19 @@ export async function POST(request: Request): Promise<NextResponse> {
       timeout: 120000, // 2 minutos
     });
 
+    console.log('Puppeteer iniciado com sucesso.');
+
+    const browserVersion = await browser.version();
+    console.log('Versão do navegador:', browserVersion);
+
+    // Obtendo o caminho do Chromium usado pelo Puppeteer
+    const chromePath = browser.process()?.spawnfile;
+    console.log('Caminho do Chromium usado pelo Puppeteer:', chromePath);
+
     try {
       for (const url of urls) {
+        console.log('Processando URL:', url);
+
         const viewports = [
           { name: 'desktop', width: 1280, height: 800 },
           { name: 'mobile', width: 375, height: 667, isMobile: true },
@@ -245,13 +258,19 @@ export async function POST(request: Request): Promise<NextResponse> {
             request.continue();
           });
 
-          console.log('Iniciando a navegação para:', url);
+          // Marcador de tempo antes da navegação
+          const startTime = Date.now();
+
+          console.log(`Navegando para ${url} no modo ${viewport.name}, inicio ás ${new Date(startTime).toLocaleTimeString()}`);
           try {
             await page.goto(url, { timeout: 120000 });
-            console.log('Navegação concluída para:', url);
+            console.log(`Navegação concluída para ${url} no modo ${viewport.name}`);
           } catch (error) {
-            console.error(`Erro de navegação para ${url}: ${(error as Error).message}`);
+            console.error(`Erro de navegação para ${url} no modo ${viewport.name}: ${(error as Error).message}`);
           }
+
+          const endTime = Date.now();
+          console.log(`Navegando para ${url} no modo ${viewport.name}, finalizada ás ${new Date(endTime).toLocaleTimeString()}`);
 
           // Validação
           const images = await validateImages(page, baseDomain);
@@ -269,6 +288,8 @@ export async function POST(request: Request): Promise<NextResponse> {
             passedInternalization: true,
           };
 
+          console.log(`Relatório criado para ${url} no modo ${viewport.name}`);
+
           allReports.push(validationReport);
           await page.close();
         }
@@ -281,7 +302,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       console.error('Erro ao processar as validações:', error);
       return NextResponse.json({ error: 'Erro ao processar as validações' }, { status: 500 });
     } finally {
+      console.log('Fechando o navegador...');
       await browser.close();
+      console.log('Navegador fechado.');
     }
 
   } catch (error) {

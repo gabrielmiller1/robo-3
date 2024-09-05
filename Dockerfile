@@ -22,8 +22,8 @@ RUN npm install
 # Construindo o projeto Next.js
 RUN npm run build
 
-# Expondo a porta 4000
-EXPOSE 4000
+# Expondo a porta 3000
+EXPOSE 3000
 
 # Comando para iniciar a aplicação
 CMD ["npm", "start"]
